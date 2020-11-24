@@ -1,0 +1,129 @@
+import random
+import sqlite3
+
+conn = sqlite3.connect('card.s3db')
+conn.execute('''
+    CREATE TABLE IF NOT EXISTS card (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        number VARCHAR(16),
+        pin VARCHAR(4),
+        balance INT DEFAULT 0
+    );''')
+
+
+class Card:
+    def __init__(self):
+        self.card_number = "400000"
+        self.pin = ""
+
+    def create_card(self):
+        # card number = 16 length
+        # pin = 4 length (0000 to 9999)
+        while not luhn_algo(self.card_number):
+            self.card_number = "400000"
+            for i in range(10):
+                self.card_number += str(random.randint(0, 9))
+        for i in range(4):
+            self.pin += str(random.randint(0, 9))
+
+
+def luhn_algo(number):
+    lista = []
+    lista[:0] = number
+    total = 0
+    for i in range(len(lista)):
+        if i % 2 == 0:
+            lista[i] = int(lista[i]) * 2
+            if int(lista[i]) > 9:
+                lista[i] = int(lista[i]) - 9
+        total += int(lista[i])
+    if total % 10 == 0:
+        return True
+    else:
+        return False
+
+
+def checker(number):
+    if conn.execute("SELECT * FROM card WHERE number = ?", number).fetchone() is None:
+        return False
+    else:
+        return True
+
+login_attempt = True
+sql_check = "SELECT * FROM card WHERE number = ? AND pin = ?"
+while True:
+    print("1. Create an account")
+    print("2. Log into account")
+    print("0. Exit")
+    ans = input("Input: ")
+    if ans == "1":
+        card = Card()
+        card.create_card()
+        cursor = conn.execute(sql_check, (card.card_number, card.pin))
+        if cursor.fetchone() is None:
+            conn.execute("INSERT INTO card(number, pin) VALUES (?, ?)", (card.card_number, card.pin))
+            conn.commit()
+        print("\nYour card number: \n" + card.card_number)
+        print("Your card PIN: \n" + card.pin)
+        print("\nYour card has been created")
+        print("--------------------------------------------------")
+    elif ans == "2":
+        card_input = input("Enter your card number: \n")
+        pin_input = input("Enter your PIN: \n")
+        cursor = conn.execute(sql_check, (card_input, pin_input))
+        r = cursor.fetchone()
+        if r is None:
+            login_attempt = False
+        else:
+            print("You have successfully logged in!")
+            acc_num = r[1]
+        if login_attempt:
+            while True:
+                print("1. Balance\n2. Add income\n3. Do transfer\n4. Close account\n5. Log out\n0. Exit")
+                ans = input()
+
+                if ans == "1":
+                    print("Balance:", r[3])
+                elif ans == "2":
+                    income = int(input("Enter Income: \n"))
+                    conn.execute("UPDATE card SET balance = ? WHERE number = ?", (income + r[3], acc_num))
+                    conn.commit()
+                    print("Income was added!")
+                elif ans == "3":
+                    print("Transfer")
+                    trans_num = input("Enter card number:\n")
+                    if r[1] == trans_num:
+                        print("You can't transfer money to the same account!")
+                    elif not luhn_algo(trans_num):
+                        print("Probably you made a mistake in the card number. Please try again!")
+                    elif not checker([trans_num]):
+                        print("Such a card does not exist")
+                    else:
+                        trans_money = int(input("Enter how much money you want to transfer:\n"))
+                        if trans_money > r[3]:
+                            print("Not enough money!")
+                        else:
+                            print("Success!")
+                            conn.execute("UPDATE card SET balance = ? WHERE number = ?", (r[3] - trans_money, acc_num))
+                            conn.commit()
+                            r = conn.execute("SELECT * FROM card WHERE number = ?", [trans_num]).fetchone()
+                            conn.execute("UPDATE card SET balance = ? WHERE number = ?", (r[3] + trans_money, trans_num))
+                            conn.commit()
+                elif ans == "4":
+                    conn.execute("DELETE FROM card WHERE number = ?", [acc_num])
+                    conn.commit()
+                    print("The account has been closed!")
+                    break
+                elif ans == "5":
+                    print("You have successfully logged out!")
+                    break
+                else:
+                    print("Bye!")
+                    exit()
+                r = conn.execute("SELECT * FROM card WHERE number = ?", [acc_num]).fetchone()
+                print(r)
+        else:
+            print("Wrong card number or PIN!")
+    else:
+        print("Bye!")
+        break
